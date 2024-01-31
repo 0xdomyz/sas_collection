@@ -1,4 +1,4 @@
-collection_template
+sas_collection
 ===================
 
-template for collection repos
+
