@@ -1,11 +1,16 @@
+/* where work is */
+%put %sysfunc(pathname(work));
+
 /* create a new directory (folder)*/
 data _null_;
     rc = dmkdir('C:\path\to\new\folder');
 run;
 
 /* list out fodler anad files*/
+libname mylib 'C:\path\to\directory';
+
 data _null_;
-    dirid = dopen('C:\path\to\directory');
+    dirid = dopen('mylib');
     if dirid > 0 then do;
         total = dnum(dirid);
         do i = 1 to total;
