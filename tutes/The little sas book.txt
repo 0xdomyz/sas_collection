@@ -1,0 +1,12 @@
+The little sas book
+
+2. data inputs
+3. transformation
+4. print summarise
+5. ods
+6. modifying and combining
+7. macro
+8. visualisation
+9. stats
+10. export
+
