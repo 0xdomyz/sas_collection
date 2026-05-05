@@ -5,4 +5,4 @@ sas_collection
 
 `procedure guide <https://support.sas.com/documentation/cdl/en/proc/61895/HTML/default/viewer.htm#a000060410.htm>`_
 
-
+`example sas docu <https://support.sas.com/documentation/cdl/en/procstat/63104/HTML/default/viewer.htm#procstat_freq_sect010.htm>`_
