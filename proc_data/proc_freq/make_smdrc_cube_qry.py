@@ -16,11 +16,19 @@ def make_smdrc_cube_qry(
     # spec
     if custom_spec is not None:
         cube_dim_cols = ", ".join([f"'{custom_spec[v]}' as {v}" for v in varis])
+        freq_cls = ""
+        join_cls = ""
     elif vari == "":
         cube_dim_cols = ", ".join([f"'All' as {v}" for v in varis])
+        freq_cls = ""
+        join_cls = ""
     elif vari in varis:
         other_varis = [v for v in varis if v != vari]
-        cube_dim_cols = ", ".join([vari] + [f"'All' as {v}" for v in other_varis])
+        cube_dim_cols = ", ".join(
+            [f"a.{vari}"] + [f"'All' as {v}" for v in other_varis]
+        )
+        freq_cls = f"{vari},"
+        join_cls = f"and a.{vari} = b.{vari}"
     else:
         raise ValueError("Invalid vari or custom_spec")
 
@@ -58,12 +66,13 @@ ods select all;
 proc sql;
 create table work._cnt5 as
     select
+        {freq_cls}
         {row_col},
         strip(tranwrd(scan(table, 1, '*'), 'Table ', '')) as factor length=50,
         sum(frequency) as n_total,
         sum(case when status='Dead' then frequency else 0 end) as n_target
     from work._crossfreq5
-    group by 1,2
+    group by {freq_cls} {row_col}, calculated factor
 ;
 
 proc sql;
@@ -81,7 +90,7 @@ create table {tbl_out} as
         where Statistic="Somers' D R|C"
     ) a
     left join work._cnt5 b
-        on a.factor = b.factor and a.{row_col} = b.{row_col}
+        on a.factor = b.factor and a.{row_col} = b.{row_col} {join_cls}
     ;
 quit;
 """
