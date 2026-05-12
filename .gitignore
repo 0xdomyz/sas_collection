@@ -1,2 +1,4 @@
 # sas jar
 *.jar
+
+__pycache__/
