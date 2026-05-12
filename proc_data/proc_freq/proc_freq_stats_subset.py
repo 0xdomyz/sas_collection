@@ -30,16 +30,19 @@ run;
 )
 
 # %%
+_lib, _tbl = tbl.split(".")
+df_h1 = sas.sasdata(_tbl, _lib).head(1)
+print(df_h1.T.to_string())
+
+# %%
 sas.submitLST(
     f"""
-proc freq data={tbl} noprint;
-    tables height_decile * status / missing chisq plots(only)=freqplot out=work._tmp_freq outpct;
+proc freq data={tbl};
+    tables chol_status bp_status weight_status smoking_status;
 run;
 """,
-    method="listonly",
+    method="listandlog",
 )
-df = sas.sasdata("_tmp_freq", "work").to_df()
-df
 
 # %% [markdown]
 # ## base
@@ -133,3 +136,52 @@ run;
 """,
     method="listonly",
 )
+
+# %% [markdown]
+# ## multi - table
+# ####################################################################################################
+# %%
+# %%
+sas.submitLST(
+    f"""
+proc sort data={tbl};
+    by bp_status height_decile;
+
+ods select none;
+ods output Measures=work._measures5;
+proc freq data={tbl};
+    by bp_status height_decile;
+    tables (smoking ageatstart) * status / measures;
+run;
+ods output close;
+ods select all;
+
+proc print data=work._measures5 (where=(Statistic="Somers' D R|C"));
+run;
+""",
+    method="listandlog",
+)
+
+sas.submitLST(
+    f"""
+proc sql;
+create table _tmp_qry as
+    select
+        height_decile,
+        bp_status,
+        strip(tranwrd(scan(table, 1, '*'), 'Table ', '')) as factor,
+        value as smdrc
+    from work._measures5 a
+    where Statistic="Somers' D R|C"
+    ;
+quit;
+""",
+    method="listandlog",
+)
+
+df = sas.sasdata("_tmp_qry", "work").to_df()
+df
+# %%
+import seaborn as sns
+
+sns.lineplot(df, x="height_decile", y="smdrc", hue="factor", style="BP_Status")
