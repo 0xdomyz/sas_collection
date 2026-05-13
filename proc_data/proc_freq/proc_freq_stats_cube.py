@@ -11,7 +11,7 @@ sas
 from make_smdrc_cube_qry import make_smdrc_cube_qry
 
 # %% [markdown]
-# ## data
+# ## 1. base data
 # ####################################################################################################
 
 # %%
@@ -38,34 +38,17 @@ df_h1 = sas.sasdata(_tbl, _lib).head(1)
 print(df_h1.T.to_string())
 
 # %% [markdown]
-# ## spec
-# ####################################################################################################
-
-# %%
-sas.submitLST(
-    f"""
-proc freq data={tbl};
-    tables chol_status bp_status weight_status smoking_status;
-run;
-""",
-    method="listandlog",
-)
-
-# %%
-import pandas as pd
-
-df = pd.read_csv("test.csv")
-df
-
-# %% [markdown]
-# ## cube
+# ## 2. cube data
 # ####################################################################################################
 # %%
 varis = ["chol_status", "bp_status", "weight_status", "smoking_status"]
 factors = ["smoking", "ageatstart"]
 target_col = "status"
+target_lvl_text = "'Dead'"
 row_col = "height_decile"
 res_tbl_prefix = "res_"
+
+import pandas as pd
 
 custom_cubes = pd.read_csv("test.csv")
 custom_cubes
@@ -86,12 +69,11 @@ quit;
 # overall
 qry = make_smdrc_cube_qry(
     tbl=tbl,
-    vari="",
     varis=varis,
     factors=factors,
     target_col=target_col,
+    target_lvl_text=target_lvl_text,
     row_col=row_col,
-    custom_spec=None,
     tbl_out=f"{res_tbl_prefix}all",
 )
 sas.submitLST(qry, method="listandlog")
@@ -100,6 +82,7 @@ df
 
 # %%
 # by each vari
+cnt = sas.saslog().count("ERROR")
 for vari in varis:
     qry = make_smdrc_cube_qry(
         tbl=tbl,
@@ -107,32 +90,37 @@ for vari in varis:
         varis=varis,
         factors=factors,
         target_col=target_col,
+        target_lvl_text=target_lvl_text,
         row_col=row_col,
-        custom_spec=None,
         tbl_out=f"{res_tbl_prefix}{vari}",
     )
     sas.submitLST(qry, method="listandlog")
+    if sas.saslog().count("ERROR") > cnt:
+        raise Exception
 
 # %%
 # by custom
+cnt = sas.saslog().count("ERROR")
 for idx, row in custom_cubes.iterrows():
     qry = make_smdrc_cube_qry(
         tbl=tbl,
-        vari="",
         varis=varis,
         factors=factors,
         target_col=target_col,
+        target_lvl_text=target_lvl_text,
         row_col=row_col,
         custom_spec=row,
         tbl_out=f"{res_tbl_prefix}custom{idx}",
     )
     sas.submitLST(qry, method="listandlog")
+    if sas.saslog().count("ERROR") > cnt:
+        raise Exception
 
 # %%
 sas.submitLST(
     f"""
 data work.{res_tbl_prefix}cube;
-    length {' '.join(varis)} $50
+    length {' '.join([f"{var} $50" for var in varis])} 
            factor $50
            {row_col} smdrc 8;
     set work.{res_tbl_prefix}:;
@@ -168,14 +156,14 @@ dashboard.write_table(df, sql="")
 pivot_configs = [
     # fmt: off
     dict(row_field=row_col,col_field='factor',data_field="smdrc",chart_type="line",),
-    dict(row_field=row_col,data_field="n_total",xl_func='average',chart_type="area_stacked",),
-    dict(row_field=row_col,data_field="n_target",xl_func='average',chart_type="area_stacked",),
-    dict(row_field=row_col,data_field="odr",xl_func='average',chart_type="line",),
+    dict(row_field=row_col,col_field='smoking_status',data_field="smdrc",chart_type="line",),
+    dict(row_field=row_col,col_field='smoking_status',data_field="n_total",xl_func='sum',chart_type="area_stacked",),
+    dict(row_field=row_col,col_field='smoking_status',data_field="odr",xl_func='average',chart_type="line",),
     dict(row_field=row_col,col_field='factor',data_field="smdrc",xl_func='count',chart_type="line",),
     # fmt: on
 ]
 dashboard.add_pivots(pivot_configs)
 
 dashboard.add_slicers(
-    fields=varis,
+    fields=varis + [row_col, "factor"],
 )
