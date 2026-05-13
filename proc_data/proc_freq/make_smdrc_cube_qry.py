@@ -100,7 +100,6 @@ quit;
 # %%
 if __name__ == "__main__":
 
-    # %%
     import saspy
 
     sas = saspy.SASsession()
