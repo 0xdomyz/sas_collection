@@ -9,6 +9,7 @@ def make_smdrc_cube_qry(
     factors: list,
     target_col: str,
     row_col: str,
+    target_lvl_text: str = "1",
     custom_spec: dict = None,
     tbl_out: str = "_test_res",
 ):
@@ -70,8 +71,9 @@ create table work._cnt5 as
         {row_col},
         strip(tranwrd(scan(table, 1, '*'), 'Table ', '')) as factor length=50,
         sum(frequency) as n_total,
-        sum(case when status='Dead' then frequency else 0 end) as n_target
+        sum(case when {target_col}={target_lvl_text} then frequency else 0 end) as n_target
     from work._crossfreq5
+    where _TYPE_ = '11'
     group by {freq_cls} {row_col}, calculated factor
 ;
 
@@ -133,27 +135,53 @@ if __name__ == "__main__":
     print(df_h1.T.to_string())
 
     # %%
-    qry = make_smdrc_cube_qry(
+    # Test 1: all dimensions (vari="")
+    qry1 = make_smdrc_cube_qry(
         tbl=tbl,
-        # vari="bp_status",
         vari="",
         varis=["chol_status", "bp_status", "weight_status", "smoking_status"],
-        custom_spec=None,
-        # custom_spec={
-        #     "chol_status": "High or Borderline",
-        #     "bp_status": "High",
-        #     "weight_status": "All",
-        #     "smoking_status": "All",
-        #     "WHERE_CLAUSE": "chol_status in ('High','Borderline') and bp_status='High'",
-        # },
         factors=["smoking", "ageatstart"],
         target_col="status",
+        target_lvl_text="'Dead'",
         row_col="height_decile",
-        tbl_out="_test_res",
     )
-    sas.submitLST(
-        qry,
-        method="listonly",
+    sas.submitLST(qry1, method="listandlog")
+    df1 = sas.sasdata("_test_res", "work").to_df()
+    print("Test 1 (all dims):", df1.shape)
+
+    # %%
+    # Test 2: specific dimension (vari="weight_status")
+    qry2 = make_smdrc_cube_qry(
+        tbl=tbl,
+        vari="weight_status",
+        varis=["chol_status", "bp_status", "weight_status", "smoking_status"],
+        factors=["smoking", "ageatstart"],
+        target_col="status",
+        target_lvl_text="'Dead'",
+        row_col="height_decile",
     )
-    df = sas.sasdata("_test_res", "work").to_df()
-    df
+    sas.submitLST(qry2, method="listonly")
+    df2 = sas.sasdata("_test_res", "work").to_df()
+    print("Test 2 (weight_status):", df2.shape)
+
+    # %%
+    # Test 3: custom specification
+    qry3 = make_smdrc_cube_qry(
+        tbl=tbl,
+        vari="",
+        varis=["chol_status", "bp_status", "weight_status", "smoking_status"],
+        custom_spec={
+            "chol_status": "High or Borderline",
+            "bp_status": "High",
+            "weight_status": "Normal",
+            "smoking_status": "All",
+            "WHERE_CLAUSE": "chol_status in ('High','Borderline') and bp_status='High'",
+        },
+        factors=["smoking", "ageatstart"],
+        target_col="status",
+        target_lvl_text="'Dead'",
+        row_col="height_decile",
+    )
+    sas.submitLST(qry3, method="listonly")
+    df3 = sas.sasdata("_test_res", "work").to_df()
+    print("Test 3 (custom spec):", df3.shape)

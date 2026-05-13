@@ -50,6 +50,7 @@ custom_spec = None
 
 factors = ["smoking", "ageatstart"]
 target_col = "status"
+target_lvl_text = "'Dead'"
 row_col = "height_decile"
 tbl_out = "_test_res"
 
@@ -112,8 +113,9 @@ create table work._cnt5 as
         {row_col},
         strip(tranwrd(scan(table, 1, '*'), 'Table ', '')) as factor length=50,
         sum(frequency) as n_total,
-        sum(case when status='Dead' then frequency else 0 end) as n_target
+        sum(case when {target_col}={target_lvl_text} then frequency else 0 end) as n_target
     from work._crossfreq5
+    where _TYPE_ = '11'
     group by {freq_cls} {row_col}, calculated factor
 ;
 
@@ -143,3 +145,41 @@ sas.submitLST(qry, method="listandlog")
 df = sas.sasdata(tbl_out, "work").to_df()
 df["odr"] = df["n_target"] / df["n_total"]
 df
+
+# %% [markdown]
+# ## test total should be the same as freq total
+# ####################################################################################################
+
+# %%
+sas.submitLST(
+    f"""
+proc sql;
+create table _tmp_grp as
+    select
+        {vari},
+        {row_col},
+        {factors[0]},
+        {target_col},
+        count(1) as n
+    from {tbl_in}
+    where weight_status = 'Normal' and height_decile = 0
+    group by 1,2,3,4
+    order by 1,2,3,4;
+quit;
+""",
+    method="listonly",
+)
+df2 = sas.sasdata("_tmp_grp", "work").to_df()
+df2["n"].sum()
+
+# %%
+sas.submitLST(
+    f"""
+proc freq data={tbl_in} (where = (weight_status = 'Normal' and height_decile = 0));
+    tables smoking * {target_col} / missing measures;
+run;
+""",
+    method="listandlog",
+)
+
+# %%

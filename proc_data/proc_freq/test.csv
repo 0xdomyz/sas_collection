@@ -1,3 +1,3 @@
 chol_status,bp_status,weight_status,smoking_status,WHERE_CLAUSE
 High,High,All,All,chol_status = 'High' and bp_status = 'High'
-High,High,Normal,All,chol_status = 'High' and bp_status = 'High' and weight_status = 'Normal'
+High,High,"(Normal, Overweight)",All,"chol_status = 'High' and bp_status = 'High' and weight_status in ('Normal','Overweight')"
