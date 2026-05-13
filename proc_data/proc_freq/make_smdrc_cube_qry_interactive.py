@@ -37,16 +37,17 @@ print(df_h1.T.to_string())
 # ####################################################################################################
 # %%
 varis = ["chol_status", "bp_status", "weight_status", "smoking_status"]
-vari = "weight_status"
-# vari = ""
-custom_spec = None
-# custom_spec = {
-#     "chol_status": "High or Borderline",
-#     "bp_status": "High",
-#     "weight_status": "All",
-#     "smoking_status": "All",
-#     "WHERE_CLAUSE": "chol_status in ('High','Borderline') and bp_status='High'",
-# }
+# vari = "weight_status"
+vari = ""
+# custom_spec = None
+custom_spec = {
+    # "chol_status": "High or Borderline",
+    "chol_status": "(High, Borderline)",
+    "bp_status": "High",
+    "weight_status": "All",
+    "smoking_status": "All",
+    "WHERE_CLAUSE": "chol_status in ('High','Borderline') and bp_status='High'",
+}
 
 factors = ["smoking", "ageatstart"]
 target_col = "status"
@@ -147,39 +148,63 @@ df["odr"] = df["n_target"] / df["n_total"]
 df
 
 # %% [markdown]
+# ## test gini
+# ####################################################################################################
+# %%
+df.iloc[-1, :].to_dict()
+
+# %%
+sas.submitLST(
+    f"""
+proc logistic data={tbl_in} (where = (
+    chol_status in ('High','Borderline') and bp_status='High'
+    and height_decile=9
+));
+    where status in ('Dead','Alive');
+    model status(event='Dead') = smoking;
+    output out=work._pred p=phat;
+run;
+""",
+    method="listonly",
+)
+
+# %% [markdown]
 # ## test total should be the same as freq total
 # ####################################################################################################
 
 # %%
-sas.submitLST(
-    f"""
-proc sql;
-create table _tmp_grp as
-    select
-        {vari},
-        {row_col},
-        {factors[0]},
-        {target_col},
-        count(1) as n
-    from {tbl_in}
-    where weight_status = 'Normal' and height_decile = 0
-    group by 1,2,3,4
-    order by 1,2,3,4;
-quit;
-""",
-    method="listonly",
-)
-df2 = sas.sasdata("_tmp_grp", "work").to_df()
-df2["n"].sum()
+# use set up where vari is weight_status and custom_spec is None as example
 
-# %%
-sas.submitLST(
-    f"""
-proc freq data={tbl_in} (where = (weight_status = 'Normal' and height_decile = 0));
-    tables smoking * {target_col} / missing measures;
-run;
-""",
-    method="listandlog",
-)
+# # %%
+# sas.submitLST(
+#     f"""
+# proc sql;
+# create table _tmp_grp as
+#     select
+#         {vari},
+#         {row_col},
+#         {factors[0]},
+#         {target_col},
+#         count(1) as n
+#     from {tbl_in}
+#     where weight_status = 'Normal' and height_decile = 0
+#     group by 1,2,3,4
+#     order by 1,2,3,4;
+# quit;
+# """,
+#     method="listandlog",
+# )
+# df2 = sas.sasdata("_tmp_grp", "work").to_df()
+# df2["n"].sum()
+
+# # %%
+# sas.submitLST(
+#     f"""
+# proc freq data={tbl_in} (where = (weight_status = 'Normal' and height_decile = 0));
+#     tables smoking * {target_col} / missing measures;
+# run;
+# """,
+#     method="listandlog",
+# )
 
 # %%

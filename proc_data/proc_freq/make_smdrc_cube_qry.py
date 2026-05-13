@@ -4,11 +4,11 @@
 # %%
 def make_smdrc_cube_qry(
     tbl: str,
-    vari: str,
     varis: list,
     factors: list,
     target_col: str,
     row_col: str,
+    vari: str = "",
     target_lvl_text: str = "1",
     custom_spec: dict = None,
     tbl_out: str = "_test_res",
@@ -171,7 +171,7 @@ if __name__ == "__main__":
         vari="",
         varis=["chol_status", "bp_status", "weight_status", "smoking_status"],
         custom_spec={
-            "chol_status": "High or Borderline",
+            "chol_status": "(High, Borderline)",
             "bp_status": "High",
             "weight_status": "Normal",
             "smoking_status": "All",
