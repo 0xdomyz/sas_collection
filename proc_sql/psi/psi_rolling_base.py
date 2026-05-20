@@ -1,18 +1,13 @@
+# %%
+
 import saspy
 
-# %%
 sas = saspy.SASsession()
 sas
 # %%
 sas.submitLST(
     f"""
-data heart_time_raw;
-    set sashelp.heart(keep=ageatstart smoking_status);
-    where not missing(ageatstart);
-    if missing(smoking_status) then smoking_status = 'MISSING';
-run;
-
-proc rank data=heart_time_raw groups=10 out=heart_time;
+proc rank data=sashelp.heart groups=10 out=heart_time;
     var ageatstart;
     ranks age_decile;
 run;
@@ -26,19 +21,41 @@ df_h = sas.sasdata(_tbl, _lib).head()
 df_h
 
 # %%
+psi_in_table = "heart_time"
+category_var = "weight_status"
+# category_var = None
+psi_time_var = "age_decile"
+psi_cat_var = "smoking_status"
+psi_out_table = "psi_by_period_rolling"
+time_interval = 1
+early_time = 0
+psi_eps = 1e-6
+
+# %%
 sas.submitLST(
     f"""
-proc freq data=heart_time;
-    tables age_decile * smoking_status / missing;
-run;
+proc sql;
+create table heart_time2 as
+    select
+        a.*
+    from heart_time a
+    where
+        weight_status = 'Underweight'
+    ;
+quit;
 """,
     method="listonly",
 )
+# psi_in_table = "heart_time2"
 
 # %%
-PSI_IN_TABLE = "heart_time"
-PSI_OUT_TABLE = "psi_by_period_rolling"
-PSI_EPS = 1e-6
+category_cls = "" if category_var is None else f"{category_var},"
+h1_category_cls = "" if category_var is None else f"h1.{category_var},"
+p_category_cls = "" if category_var is None else f"p.{category_var},"
+join_cls_1 = (
+    f"" if category_var is None else f"and h1.{category_var} = h2.{category_var}"
+)
+join_cls_2 = f"" if category_var is None else f"and p.{category_var} = b.{category_var}"
 
 # %%
 sas.submitLST(
@@ -46,51 +63,81 @@ sas.submitLST(
 proc sql;
     create table period_dist as
     select
-        age_decile,
-        smoking_status,
-        count(*) as n_t,
-        calculated n_t / (select count(*) from {PSI_IN_TABLE} h2 where h2.age_decile=h1.age_decile) as p_t
-    from {PSI_IN_TABLE} h1
-    group by age_decile, smoking_status;
+        {h1_category_cls}
+        h1.{psi_time_var},
+        h1.{psi_cat_var},
+        h1.n as n_t,
+        h1.n / h2.n as p_t
+    from (
+        select {category_cls} {psi_time_var}, {psi_cat_var}, count(*) as n
+        from {psi_in_table}
+        group by {category_cls} {psi_time_var}, {psi_cat_var}
+    ) h1
+    left join (
+        select 
+            {category_cls}
+            {psi_time_var},
+            count(*) as n
+        from {psi_in_table}
+        group by {category_cls} {psi_time_var}
+    ) h2
+    on h1.{psi_time_var} = h2.{psi_time_var}
+    {join_cls_1}
+    ;
 
     create table psi_detail as
     select
-        p.age_decile,
-        coalesce(p.smoking_status, b.smoking_status) as smoking_status length=16,
+        {p_category_cls}
+        p.{psi_time_var},
+        coalesce(p.{psi_cat_var}, b.{psi_cat_var}) as {psi_cat_var},
         coalesce(b.p_t, 0) as p_base,
         coalesce(p.p_t, 0) as p_t,
         (
-            (max(calculated p_t, {PSI_EPS}) - max(calculated p_base, {PSI_EPS}))
-            * log(max(calculated p_t, {PSI_EPS}) / max(calculated p_base, {PSI_EPS}))
+            (max(calculated p_t, {psi_eps}) - max(calculated p_base, {psi_eps}))
+            * log(max(calculated p_t, {psi_eps}) / max(calculated p_base, {psi_eps}))
         ) as psi_component
     from period_dist p
-    full join period_dist b
-        on p.smoking_status = b.smoking_status
-       and b.age_decile = p.age_decile - 1
-    where p.age_decile >= 1;
+    full outer join period_dist b
+        on p.{psi_cat_var} = b.{psi_cat_var}
+       and b.{psi_time_var} = p.{psi_time_var} - {time_interval}
+       {join_cls_2}
+    where p.{psi_time_var} > {early_time};
 
-    create table {PSI_OUT_TABLE} as
+    create table {psi_out_table} as
     select
-        age_decile,
-        sum(psi_component) as psi format=8.4
+        {category_cls}
+        {psi_time_var},
+        sum(psi_component) as psi
     from psi_detail
-    group by age_decile
-    order by age_decile;
+    group by {category_cls} {psi_time_var}
+    order by {category_cls} {psi_time_var};
 quit;
     """,
-    method="listonly",
+    method="listandlog",
 )
 
 # %%
-_lib, _tbl = f"work.{PSI_OUT_TABLE}".split(".")
+_lib, _tbl = f"work.{psi_out_table}".split(".")
 df = sas.sd2df(_tbl, _lib)
 df
 
 # %%
 df.plot(
-    x="age_decile",
+    x=psi_time_var,
     y="psi",
     kind="line",
-    title="PSI by Age Decile (Rolling Base)",
+    title=f"PSI by {psi_time_var.replace('_', ' ').title()} (Rolling Base)",
     legend=False,
 )
+
+# %%
+df2 = df.copy()
+df2.columns = df2.columns.str.strip().str.lower()
+df2.pivot_table(
+    index=psi_time_var,
+    columns=category_var,
+    values="psi",
+    dropna=False,
+)
+
+# %%
