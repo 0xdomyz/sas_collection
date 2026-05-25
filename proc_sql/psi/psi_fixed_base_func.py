@@ -23,9 +23,9 @@ quit;
 def make_psi_qry(
     tbl: str,
     psi_cat_var: str,
-    row_col: str,
+    time_col: str,
     psi_base_cls: str,
-    vari: str = "",
+    seg_col: str = "",
     tbl_out: str = "_psi_main",
     psi_eps=1e-6,
 ):
@@ -36,33 +36,25 @@ def make_psi_qry(
     def gb(items):
         return f"group by {csv(items)}" if items else ""
 
-    dims = [vari] if vari else []
-    dim_cols = csv(dims)
-    dim_h1 = csv([f"h1.{d}" for d in dims])
-    dim_p = csv([f"p.{d}" for d in dims])
-    dim_join_h1_h2 = (
-        " and " + " and ".join([f"h1.{d} = h2.{d}" for d in dims]) if dims else ""
-    )
-    dim_join_p_b = (
-        " and " + " and ".join([f"p.{d} = b.{d}" for d in dims]) if dims else ""
-    )
-    grp_prefix = csv(dims) + ", " if dims else ""
+    dims = [seg_col] if seg_col else []
+    dim_join_h1_h2 = f" and h1.{seg_col} = h2.{seg_col}" if seg_col else ""
+    dim_join_p_b = f" and p.{seg_col} = b.{seg_col}" if seg_col else ""
 
     qry = f"""
 proc sql;
     create table _base_dist as
     select
-        {dim_h1 + ", " if dim_h1 else ""}h1.{psi_cat_var},
+        {f'h1.{seg_col}, ' if seg_col else ''}h1.{psi_cat_var},
         h1.n as n_base,
         h1.n / h2.n as p_base
     from (
-        select {grp_prefix}{psi_cat_var}, count(*) as n
+        select {f'{seg_col}, ' if seg_col else ''}{psi_cat_var}, count(*) as n
         from {tbl}
         where {psi_base_cls}
         {gb(dims + [psi_cat_var])}
     ) h1
     left join (
-        select {dim_cols + ", " if dim_cols else ""}count(*) as n
+        select {f'{seg_col}, ' if seg_col else ''}count(*) as n
         from {tbl}
         where {psi_base_cls}
         {gb(dims)}
@@ -73,27 +65,27 @@ proc sql;
 
     create table _period_dist as
     select
-        {dim_h1 + ", " if dim_h1 else ""}h1.{row_col},
+        {f'h1.{seg_col}, ' if seg_col else ''}h1.{time_col},
         h1.{psi_cat_var},
         h1.n as n_t,
         h1.n / h2.n as p_t
     from (
-        select {grp_prefix}{row_col}, {psi_cat_var}, count(*) as n
+        select {f'{seg_col}, ' if seg_col else ''}{time_col}, {psi_cat_var}, count(*) as n
         from {tbl}
-        {gb(dims + [row_col, psi_cat_var])}
+        {gb(dims + [time_col, psi_cat_var])}
     ) h1
     left join (
-        select {dim_cols + ", " if dim_cols else ""}{row_col}, count(*) as n
+        select {f'{seg_col}, ' if seg_col else ''}{time_col}, count(*) as n
         from {tbl}
-        {gb(dims + [row_col])}
+        {gb(dims + [time_col])}
     ) h2
-    on h1.{row_col} = h2.{row_col}
+    on h1.{time_col} = h2.{time_col}
     {dim_join_h1_h2}
     ;
 
     create table _psi_detail as
     select
-        {dim_p + ", " if dim_p else ""}p.{row_col},
+        {f'p.{seg_col}, ' if seg_col else ''}p.{time_col},
         coalesce(p.{psi_cat_var}, b.{psi_cat_var}) as {psi_cat_var},
         coalesce(b.p_base, 0) as p_base,
         coalesce(p.p_t, 0) as p_t,
@@ -109,12 +101,12 @@ proc sql;
 
     create table {tbl_out} as
     select
-        {dim_p + ", " if dim_p else ""}p.{row_col},
+        {f'p.{seg_col}, ' if seg_col else ''}p.{time_col},
         '{psi_cat_var}' as psi_variable,
         sum(p.psi_component) as psi
     from _psi_detail p
-    {gb(dims + [f"p.{row_col}", "psi_variable"])}
-    order by {csv([*dims, f"p.{row_col}", "psi_variable"])}
+    {gb(dims + [f"p.{time_col}", "psi_variable"])}
+    order by {csv([*dims, f"p.{time_col}", "psi_variable"])}
     ;
 quit;
 """
@@ -123,9 +115,7 @@ quit;
 
 def make_cube_qry(
     tbl: str,
-    varis: list,
-    row_col: str,
-    vari: str = "",
+    cube_variables: list,
     custom_labels: dict = None,
     tbl_out: str = "_test_res",
 ):
@@ -133,23 +123,19 @@ def make_cube_qry(
     def csv(items):
         return ", ".join(items)
 
-    if custom_labels is not None:
-        cube_dim_cols = [f"'{custom_labels.get(v, 'All')}' as {v}" for v in varis]
-    elif vari == "":
-        cube_dim_cols = [f"'All' as {v}" for v in varis]
-    elif vari in varis:
-        cube_dim_cols = [f"p.{vari}"] + [f"'All' as {v}" for v in varis if v != vari]
+    if custom_labels:
+        pass
     else:
-        raise ValueError("Invalid vari for cube shaping")
+        custom_labels = {v: "All" for v in cube_variables}
+
+    cube_dim_cols = [f"'{v}' as {k}" for k, v in custom_labels.items()]
 
     qry = f"""
 proc sql;
     create table {tbl_out} as
     select
         {csv(cube_dim_cols)},
-        p.{row_col},
-        p.psi_variable,
-        p.psi
+        p.*
     from {tbl} p
     ;
 quit;
@@ -161,36 +147,35 @@ def make_psi_fixed_base_qry(
     tbl: str,
     varis: list,
     psi_cat_var: str,
-    row_col: str,
+    time_col: str,
     psi_base_cls: str,
-    vari: str = "",
+    seg_col: str = "",
     custom_spec: dict = None,
     tbl_out: str = "_test_res",
     psi_eps=1e-6,
 ):
-    if vari and vari not in varis:
-        raise ValueError("Invalid vari")
+    if seg_col and seg_col not in varis:
+        raise ValueError("Invalid seg_col")
 
     where_clause = custom_spec.get("WHERE_CLAUSE", "") if custom_spec else ""
     custom_labels = (
         {v: custom_spec.get(v, "All") for v in varis} if custom_spec else None
     )
+    cube_variables = [v for v in varis if v != seg_col]
 
     pre_qry, tbl_in = make_subset_qry(tbl=tbl, where_clause=where_clause)
     main_qry = make_psi_qry(
         tbl=tbl_in,
         psi_cat_var=psi_cat_var,
-        row_col=row_col,
+        time_col=time_col,
         psi_base_cls=psi_base_cls,
-        vari=vari,
+        seg_col=seg_col,
         tbl_out="_psi_main",
         psi_eps=psi_eps,
     )
     cube_qry = make_cube_qry(
         tbl="_psi_main",
-        varis=varis,
-        row_col=row_col,
-        vari=vari,
+        cube_variables=cube_variables,
         custom_labels=custom_labels,
         tbl_out=tbl_out,
     )
@@ -229,7 +214,7 @@ if __name__ == "__main__":
         tbl="work.heart2",
         varis=["chol_status", "bp_status", "weight_status"],
         psi_cat_var="smoking_status",
-        row_col="age_decile",
+        time_col="age_decile",
         psi_base_cls="age_decile between 0 and 2",
     )
     sas.submitLST(qry1, method="listandlog")
@@ -242,10 +227,10 @@ if __name__ == "__main__":
     # by 1 factor
     qry2 = make_psi_fixed_base_qry(
         tbl="work.heart2",
-        vari="weight_status",
+        seg_col="weight_status",
         varis=["chol_status", "bp_status", "weight_status"],
         psi_cat_var="smoking_status",
-        row_col="age_decile",
+        time_col="age_decile",
         psi_base_cls="age_decile between 0 and 2",
     )
     sas.submitLST(qry2, method="listandlog")
@@ -260,7 +245,7 @@ if __name__ == "__main__":
         tbl="work.heart2",
         varis=["chol_status", "bp_status", "weight_status"],
         psi_cat_var="smoking_status",
-        row_col="age_decile",
+        time_col="age_decile",
         psi_base_cls="age_decile between 0 and 2",
         custom_spec={
             "chol_status": "(High, Borderline)",
@@ -269,7 +254,7 @@ if __name__ == "__main__":
             "WHERE_CLAUSE": "chol_status in ('High','Borderline') and bp_status='High'",
         },
     )
-    sas.submitLST(qry3, method="listonly")
+    sas.submitLST(qry3, method="listandlog")
     df3 = sas.sasdata("_test_res", "work").to_df()
     df3.to_csv("tests/psi_fixed_test3_output.tcsv", index=False)
     print("Test 3 (custom where):", df3.shape)
