@@ -1,3 +1,4 @@
+# %%
 
 
 def make_psi_fixed_base_qry(
@@ -11,106 +12,95 @@ def make_psi_fixed_base_qry(
     tbl_out: str = "_test_res",
     psi_eps=1e-6,
 ):
-    # cube spec (vanilla, by one vari, or full custom labels)
+    def csv(items):
+        return ", ".join(items)
+
+    def gb(items):
+        return f"group by {csv(items)}" if items else ""
+
     if custom_spec is not None:
-        cube_dim_cols = ", ".join([f"'{custom_spec[v]}' as {v}" for v in varis])
-        grp_cls = ""
-        h1_grp_cls = ""
-        p_grp_cls = ""
-        join_cls_1 = ""
-        join_cls_2 = ""
+        dims = []
+        cube_dim_cols = [f"'{custom_spec[v]}' as {v}" for v in varis]
+        tbl_in = "_tmp_psi_in"
+        filter_code = f"""
+proc sql;
+    create table _tmp_psi_in as
+    select *
+    from {tbl}
+    where {custom_spec["WHERE_CLAUSE"]};
+quit;
+"""
     elif vari == "":
-        cube_dim_cols = ", ".join([f"'All' as {v}" for v in varis])
-        grp_cls = ""
-        h1_grp_cls = ""
-        p_grp_cls = ""
-        join_cls_1 = ""
-        join_cls_2 = ""
+        dims = []
+        cube_dim_cols = [f"'All' as {v}" for v in varis]
+        tbl_in = tbl
+        filter_code = ""
     elif vari in varis:
-        other_varis = [v for v in varis if v != vari]
-        cube_dim_cols = ", ".join(
-            [f"p.{vari}"] + [f"'All' as {v}" for v in other_varis]
-        )
-        grp_cls = f"{vari},"
-        h1_grp_cls = f"h1.{vari},"
-        p_grp_cls = f"p.{vari},"
-        join_cls_1 = f"and h1.{vari} = h2.{vari}"
-        join_cls_2 = f"and p.{vari} = b.{vari}"
+        dims = [vari]
+        cube_dim_cols = [f"p.{vari}"] + [f"'All' as {v}" for v in varis if v != vari]
+        tbl_in = tbl
+        filter_code = ""
     else:
         raise ValueError("Invalid vari or custom_spec")
 
-    # optional filter for custom run
-    if custom_spec is not None:
-        where = custom_spec["WHERE_CLAUSE"]
-        filter_code = f"""
-proc sql;
-create table _tmp_psi_in as
-    select *
-    from {tbl}
-    where {where};
-quit;
-"""
-        tbl_in = "_tmp_psi_in"
-    else:
-        filter_code = ""
-        tbl_in = tbl
+    dim_cols = csv(dims)
+    dim_h1 = csv([f"h1.{d}" for d in dims])
+    dim_p = csv([f"p.{d}" for d in dims])
+    dim_join_h1_h2 = (
+        " and " + " and ".join([f"h1.{d} = h2.{d}" for d in dims]) if dims else ""
+    )
+    dim_join_p_b = (
+        " and " + " and ".join([f"p.{d} = b.{d}" for d in dims]) if dims else ""
+    )
+    grp_prefix = csv(dims) + ", " if dims else ""
 
     qry = f"""
 {filter_code}
-
 proc sql;
     create table _base_dist as
     select
-        {h1_grp_cls}
-        h1.{psi_cat_var},
+        {dim_h1 + ", " if dim_h1 else ""}h1.{psi_cat_var},
         h1.n as n_base,
         h1.n / h2.n as p_base
     from (
-        select {grp_cls} {psi_cat_var}, count(*) as n
+        select {grp_prefix}{psi_cat_var}, count(*) as n
         from {tbl_in}
         where {psi_base_cls}
-        group by {grp_cls} {psi_cat_var}
+        {gb(dims + [psi_cat_var])}
     ) h1
     left join (
-        select
-            {grp_cls}
-            count(*) as n
+        select {dim_cols + ", " if dim_cols else ""}count(*) as n
         from {tbl_in}
         where {psi_base_cls}
-        group by {grp_cls}
+        {gb(dims)}
     ) h2
     on 1=1
-    {join_cls_1}
+    {dim_join_h1_h2}
     ;
 
     create table _period_dist as
     select
-        {h1_grp_cls}
-        h1.{row_col},
+        {dim_h1 + ", " if dim_h1 else ""}h1.{row_col},
         h1.{psi_cat_var},
         h1.n as n_t,
         h1.n / h2.n as p_t
     from (
-        select {grp_cls} {row_col}, {psi_cat_var}, count(*) as n
+        select {grp_prefix}{row_col}, {psi_cat_var}, count(*) as n
         from {tbl_in}
-        group by {grp_cls} {row_col}, {psi_cat_var}
+        {gb(dims + [row_col, psi_cat_var])}
     ) h1
     left join (
-        select
-            {grp_cls}
-            {row_col},
-            count(*) as n
+        select {dim_cols + ", " if dim_cols else ""}{row_col}, count(*) as n
         from {tbl_in}
-        group by {grp_cls} {row_col}
+        {gb(dims + [row_col])}
     ) h2
     on h1.{row_col} = h2.{row_col}
-    {join_cls_1}
+    {dim_join_h1_h2}
     ;
 
     create table _psi_detail as
     select
-        {p_grp_cls}
-        p.{row_col},
+        {dim_p + ", " if dim_p else ""}p.{row_col},
         coalesce(p.{psi_cat_var}, b.{psi_cat_var}) as {psi_cat_var},
         coalesce(b.p_base, 0) as p_base,
         coalesce(p.p_t, 0) as p_t,
@@ -121,18 +111,18 @@ proc sql;
     from _period_dist p
     full outer join _base_dist b
         on p.{psi_cat_var} = b.{psi_cat_var}
-       {join_cls_2}
+       {dim_join_p_b}
     ;
 
     create table {tbl_out} as
     select
-        {cube_dim_cols},
+        {csv(cube_dim_cols)},
         p.{row_col},
         '{psi_cat_var}' as psi_variable,
         sum(p.psi_component) as psi
     from _psi_detail p
-    group by {grp_cls} p.{row_col}, psi_variable
-    order by {grp_cls} p.{row_col}, psi_variable
+    {gb(dims + [f"p.{row_col}", "psi_variable"])}
+    order by {csv([*dims, f"p.{row_col}", "psi_variable"])}
     ;
 quit;
 """
@@ -146,6 +136,7 @@ if __name__ == "__main__":
 
     sas = saspy.SASsession()
     sas
+    # %%
 
     tbl = "work.heart2"
 
@@ -163,6 +154,8 @@ if __name__ == "__main__":
         method="listonly",
     )
 
+    # %%
+
     # vanilla
     qry1 = make_psi_fixed_base_qry(
         tbl="work.heart2",
@@ -173,7 +166,10 @@ if __name__ == "__main__":
     )
     sas.submitLST(qry1, method="listandlog")
     df1 = sas.sasdata("_test_res", "work").to_df()
+    df1.to_csv("tests/psi_fixed_test1_output.tcsv", index=False)
     print("Test 1 (all dims):", df1.shape)
+
+    # %%
 
     # by 1 factor
     qry2 = make_psi_fixed_base_qry(
@@ -184,9 +180,12 @@ if __name__ == "__main__":
         row_col="age_decile",
         psi_base_cls="age_decile between 0 and 2",
     )
-    sas.submitLST(qry2, method="listonly")
+    sas.submitLST(qry2, method="listandlog")
     df2 = sas.sasdata("_test_res", "work").to_df()
+    df2.to_csv("tests/psi_fixed_test2_output.tcsv", index=False)
     print("Test 2 (weight_status):", df2.shape)
+
+    # %%
 
     # custom where
     qry3 = make_psi_fixed_base_qry(
@@ -198,10 +197,11 @@ if __name__ == "__main__":
         custom_spec={
             "chol_status": "(High, Borderline)",
             "bp_status": "High",
-            "weight_status": "Normal",
+            "weight_status": "All",
             "WHERE_CLAUSE": "chol_status in ('High','Borderline') and bp_status='High'",
         },
     )
     sas.submitLST(qry3, method="listonly")
     df3 = sas.sasdata("_test_res", "work").to_df()
+    df3.to_csv("tests/psi_fixed_test3_output.tcsv", index=False)
     print("Test 3 (custom where):", df3.shape)

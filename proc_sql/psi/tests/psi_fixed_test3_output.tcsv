@@ -1,0 +1,11 @@
+chol_status,bp_status,weight_status,age_decile,psi_variable,psi
+"(High, Borderline)",High,All,0.0,smoking_status,0.03092001086598
+"(High, Borderline)",High,All,1.0,smoking_status,0.01635444072076
+"(High, Borderline)",High,All,2.0,smoking_status,0.00905388585384
+"(High, Borderline)",High,All,3.0,smoking_status,0.12734115769322
+"(High, Borderline)",High,All,4.0,smoking_status,0.19364502237869
+"(High, Borderline)",High,All,5.0,smoking_status,0.11658883210077
+"(High, Borderline)",High,All,6.0,smoking_status,0.39577772997275
+"(High, Borderline)",High,All,7.0,smoking_status,0.38760744807713
+"(High, Borderline)",High,All,8.0,smoking_status,0.63958953096219
+"(High, Borderline)",High,All,9.0,smoking_status,0.86083594281311

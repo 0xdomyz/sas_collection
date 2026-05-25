@@ -1,0 +1,11 @@
+chol_status,bp_status,weight_status,age_decile,psi_variable,psi
+All,All,All,0.0,smoking_status,0.0030063590574
+All,All,All,1.0,smoking_status,0.00131416850878
+All,All,All,2.0,smoking_status,0.00453171893285
+All,All,All,3.0,smoking_status,0.0075096232366
+All,All,All,4.0,smoking_status,0.017721409722
+All,All,All,5.0,smoking_status,0.09947275478573
+All,All,All,6.0,smoking_status,0.1636330438136
+All,All,All,7.0,smoking_status,0.13895229162353
+All,All,All,8.0,smoking_status,0.2163650539733
+All,All,All,9.0,smoking_status,0.40903410264655
