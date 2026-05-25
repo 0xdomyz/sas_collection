@@ -1,48 +1,42 @@
 # %%
 
 
-def make_psi_fixed_base_qry(
+def make_subset_qry(
     tbl: str,
-    varis: list,
+    where_clause: str = "",
+    tbl_out: str = "_tmp_psi_in",
+):
+    if where_clause.strip() == "":
+        return "", tbl
+
+    qry = f"""
+proc sql;
+    create table {tbl_out} as
+    select *
+    from {tbl}
+    where {where_clause};
+quit;
+"""
+    return qry, tbl_out
+
+
+def make_psi_qry(
+    tbl: str,
     psi_cat_var: str,
     row_col: str,
     psi_base_cls: str,
     vari: str = "",
-    custom_spec: dict = None,
-    tbl_out: str = "_test_res",
+    tbl_out: str = "_psi_main",
     psi_eps=1e-6,
 ):
+
     def csv(items):
         return ", ".join(items)
 
     def gb(items):
         return f"group by {csv(items)}" if items else ""
 
-    if custom_spec is not None:
-        dims = []
-        cube_dim_cols = [f"'{custom_spec[v]}' as {v}" for v in varis]
-        tbl_in = "_tmp_psi_in"
-        filter_code = f"""
-proc sql;
-    create table _tmp_psi_in as
-    select *
-    from {tbl}
-    where {custom_spec["WHERE_CLAUSE"]};
-quit;
-"""
-    elif vari == "":
-        dims = []
-        cube_dim_cols = [f"'All' as {v}" for v in varis]
-        tbl_in = tbl
-        filter_code = ""
-    elif vari in varis:
-        dims = [vari]
-        cube_dim_cols = [f"p.{vari}"] + [f"'All' as {v}" for v in varis if v != vari]
-        tbl_in = tbl
-        filter_code = ""
-    else:
-        raise ValueError("Invalid vari or custom_spec")
-
+    dims = [vari] if vari else []
     dim_cols = csv(dims)
     dim_h1 = csv([f"h1.{d}" for d in dims])
     dim_p = csv([f"p.{d}" for d in dims])
@@ -55,7 +49,6 @@ quit;
     grp_prefix = csv(dims) + ", " if dims else ""
 
     qry = f"""
-{filter_code}
 proc sql;
     create table _base_dist as
     select
@@ -64,13 +57,13 @@ proc sql;
         h1.n / h2.n as p_base
     from (
         select {grp_prefix}{psi_cat_var}, count(*) as n
-        from {tbl_in}
+        from {tbl}
         where {psi_base_cls}
         {gb(dims + [psi_cat_var])}
     ) h1
     left join (
         select {dim_cols + ", " if dim_cols else ""}count(*) as n
-        from {tbl_in}
+        from {tbl}
         where {psi_base_cls}
         {gb(dims)}
     ) h2
@@ -86,12 +79,12 @@ proc sql;
         h1.n / h2.n as p_t
     from (
         select {grp_prefix}{row_col}, {psi_cat_var}, count(*) as n
-        from {tbl_in}
+        from {tbl}
         {gb(dims + [row_col, psi_cat_var])}
     ) h1
     left join (
         select {dim_cols + ", " if dim_cols else ""}{row_col}, count(*) as n
-        from {tbl_in}
+        from {tbl}
         {gb(dims + [row_col])}
     ) h2
     on h1.{row_col} = h2.{row_col}
@@ -116,8 +109,7 @@ proc sql;
 
     create table {tbl_out} as
     select
-        {csv(cube_dim_cols)},
-        p.{row_col},
+        {dim_p + ", " if dim_p else ""}p.{row_col},
         '{psi_cat_var}' as psi_variable,
         sum(p.psi_component) as psi
     from _psi_detail p
@@ -127,6 +119,82 @@ proc sql;
 quit;
 """
     return qry
+
+
+def make_cube_qry(
+    tbl: str,
+    varis: list,
+    row_col: str,
+    vari: str = "",
+    custom_labels: dict = None,
+    tbl_out: str = "_test_res",
+):
+
+    def csv(items):
+        return ", ".join(items)
+
+    if custom_labels is not None:
+        cube_dim_cols = [f"'{custom_labels.get(v, 'All')}' as {v}" for v in varis]
+    elif vari == "":
+        cube_dim_cols = [f"'All' as {v}" for v in varis]
+    elif vari in varis:
+        cube_dim_cols = [f"p.{vari}"] + [f"'All' as {v}" for v in varis if v != vari]
+    else:
+        raise ValueError("Invalid vari for cube shaping")
+
+    qry = f"""
+proc sql;
+    create table {tbl_out} as
+    select
+        {csv(cube_dim_cols)},
+        p.{row_col},
+        p.psi_variable,
+        p.psi
+    from {tbl} p
+    ;
+quit;
+"""
+    return qry
+
+
+def make_psi_fixed_base_qry(
+    tbl: str,
+    varis: list,
+    psi_cat_var: str,
+    row_col: str,
+    psi_base_cls: str,
+    vari: str = "",
+    custom_spec: dict = None,
+    tbl_out: str = "_test_res",
+    psi_eps=1e-6,
+):
+    if vari and vari not in varis:
+        raise ValueError("Invalid vari")
+
+    where_clause = custom_spec.get("WHERE_CLAUSE", "") if custom_spec else ""
+    custom_labels = (
+        {v: custom_spec.get(v, "All") for v in varis} if custom_spec else None
+    )
+
+    pre_qry, tbl_in = make_subset_qry(tbl=tbl, where_clause=where_clause)
+    main_qry = make_psi_qry(
+        tbl=tbl_in,
+        psi_cat_var=psi_cat_var,
+        row_col=row_col,
+        psi_base_cls=psi_base_cls,
+        vari=vari,
+        tbl_out="_psi_main",
+        psi_eps=psi_eps,
+    )
+    cube_qry = make_cube_qry(
+        tbl="_psi_main",
+        varis=varis,
+        row_col=row_col,
+        vari=vari,
+        custom_labels=custom_labels,
+        tbl_out=tbl_out,
+    )
+    return f"{pre_qry}\n{main_qry}\n{cube_qry}"
 
 
 # %%
