@@ -28,13 +28,16 @@ def mkcol(col: str, alias: str = "", comma: bool = False):
     return f"{col}, " if comma else col
 
 
-def mkgb(cols: list):
+def mkgb(cols: list, order_by: bool = False):
     if not cols:
         return ""
     if not isinstance(cols, list):
         cols = [cols]
     cols = [col for col in cols if col]
-    return f"group by {', '.join(cols)}" if cols else ""
+    if not cols:
+        return ""
+    gb = f"group by {', '.join(cols)}"
+    return f"{gb}\n    order by {', '.join(cols)}" if order_by else gb
 
 
 def mkjoin(col: str, alias1: str, alias2: str):
