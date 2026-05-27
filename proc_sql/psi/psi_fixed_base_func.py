@@ -1,6 +1,6 @@
 # %%
 import cube_utils as cu
-from cube_utils import make_cube_qry, mkcol, mkgb, mkjoin
+from cube_utils import make_cube_qry, mkcol, mkgbob, mkjoin
 
 # %%
 
@@ -30,7 +30,7 @@ proc sql;
             count(*) as n
         from {tbl}
         where {psi_base_cls}
-        {mkgb([seg_col, psi_cat_var])}
+        {mkgbob([seg_col, psi_cat_var])}
     ) h1
     left join (
         select 
@@ -38,7 +38,7 @@ proc sql;
             count(*) as n
         from {tbl}
         where {psi_base_cls}
-        {mkgb([seg_col])}
+        {mkgbob([seg_col])}
     ) h2
     on 1=1
     {mkjoin(seg_col, 'h1', 'h2')}
@@ -56,14 +56,14 @@ proc sql;
             {mkcol(seg_col, comma=True)}
             {time_col}, {psi_cat_var}, count(*) as n
         from {tbl}
-        {mkgb([seg_col, time_col, psi_cat_var])}
+        {mkgbob([seg_col, time_col, psi_cat_var])}
     ) h1
     left join (
         select 
             {mkcol(seg_col, comma=True)}
             {time_col}, count(*) as n
         from {tbl}
-        {mkgb([seg_col, time_col])}
+        {mkgbob([seg_col, time_col])}
     ) h2
     on h1.{time_col} = h2.{time_col}
     {mkjoin(seg_col, 'h1', 'h2')}
@@ -93,7 +93,7 @@ proc sql;
         '{psi_cat_var}' as psi_variable,
         sum(p.psi_component) as psi
     from _psi_detail p
-    {mkgb([seg_col,f"p.{time_col}", "psi_variable"])}
+    {mkgbob([seg_col,f"p.{time_col}", "psi_variable"])}
     order by {", ".join([v for v in [seg_col, f"p.{time_col}", "psi_variable"] if v])}
     ;
 quit;
