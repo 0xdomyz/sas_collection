@@ -1,11 +1,11 @@
 # %%
 import cube_utils as cu
-from cube_utils import make_cube_qry, make_subset_qry, mkcol, mkgb, mkjoin
+from cube_utils import make_cube_qry, mkcol, mkgb, mkjoin
 
 # %%
 
 
-def make_psi_qry(
+def make_fixed_base_psi_tbl_qry(
     tbl: str,
     psi_cat_var: str,
     time_col: str,
@@ -115,15 +115,24 @@ def make_psi_fixed_base_qry(
     if seg_col and seg_col not in varis:
         raise ValueError("Invalid seg_col")
 
-    where_clause = custom_spec.get("WHERE_CLAUSE", "") if custom_spec else ""
+    if custom_spec:
+        if (
+            custom_spec["WHERE_CLAUSE"] is None
+            or custom_spec["WHERE_CLAUSE"].strip() == ""
+        ):
+            where_clause = ""
+        else:
+            where_clause = f"where {custom_spec['WHERE_CLAUSE']}"
+    else:
+        where_clause = ""
+
     custom_labels = (
         {v: custom_spec.get(v, "All") for v in varis} if custom_spec else None
     )
     cube_variables = [v for v in varis if v != seg_col]
 
-    pre_qry, tbl_in = make_subset_qry(tbl=tbl, where_clause=where_clause)
-    main_qry = make_psi_qry(
-        tbl=tbl_in,
+    main_qry = make_fixed_base_psi_tbl_qry(
+        tbl="_psi_interm",
         psi_cat_var=psi_cat_var,
         time_col=time_col,
         psi_base_cls=psi_base_cls,
@@ -135,9 +144,22 @@ def make_psi_fixed_base_qry(
         tbl="_psi_main",
         cube_variables=cube_variables,
         custom_labels=custom_labels,
-        tbl_out=tbl_out,
     )
-    return f"{pre_qry}\n{main_qry}\n{cube_qry}"
+    res_qry = f"""
+proc sql;
+    create table _psi_interm as 
+    select * from {tbl} 
+    {where_clause};
+quit;
+
+{main_qry}
+
+proc sql;
+create table {tbl_out} as
+{cube_qry};
+quit;
+"""
+    return res_qry
 
 
 # %%
@@ -216,3 +238,5 @@ if __name__ == "__main__":
     df3 = sas.sasdata("_test_res", "work").to_df()
     df3.to_csv("tests/psi_fixed_test3_output.tcsv", index=False)
     print("Test 3 (custom where):", df3.shape)
+
+# %%

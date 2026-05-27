@@ -1,26 +1,4 @@
 # %%
-
-
-def make_subset_qry(
-    tbl: str,
-    where_clause: str = "",
-    tbl_out: str = "_tmp_psi_in",
-):
-    if where_clause.strip() == "":
-        return "", tbl
-
-    qry = f"""
-proc sql;
-    create table {tbl_out} as
-    select *
-    from {tbl}
-    where {where_clause};
-quit;
-"""
-    return qry, tbl_out
-
-
-# %%
 def mkcol(col: str, alias: str = "", comma: bool = False):
     if not col:
         return ""
@@ -44,13 +22,10 @@ def mkjoin(col: str, alias1: str, alias2: str):
 
 
 # %%
-
-
 def make_cube_qry(
     tbl: str,
     cube_variables: list,
     custom_labels: dict = None,
-    tbl_out: str = "_test_res",
 ):
 
     if custom_labels:
@@ -61,13 +36,68 @@ def make_cube_qry(
     cube_dim_cols = [f"'{v}' as {k}" for k, v in custom_labels.items()]
 
     qry = f"""
-proc sql;
-    create table {tbl_out} as
     select
         {", ".join(cube_dim_cols)},
         p.*
     from {tbl} p
-    ;
-quit;
 """
     return qry
+
+
+# %%
+if __name__ == "__main__":
+    import saspy
+
+    sas = saspy.SASsession()
+    sas
+
+    # %%
+    res = mkcol("col1", "a", True)
+    print(res)
+    res = mkcol("", "a", True)
+    print(res)
+    # %%
+    res = mkgb(["col1", "col2"])
+    print(res)
+    res = mkgb([])
+    print(res)
+    # %%
+    res = mkjoin("col1", "a", "b")
+    print(res)
+    res = mkjoin("", "a", "b")
+    print(res)
+    res = mkjoin(None, "a", "b")
+    print(res)
+    # %%
+    # data for make cube
+    qry = f"""
+    proc sql;
+    create table _tmp_grp as
+        select
+            smoking_status,
+            count(1) as n
+        from sashelp.heart
+        group by 1
+        order by 1;
+    quit;
+    """
+    sas.submitLST(qry, method="listonly")
+
+    # %%
+    qry = make_cube_qry(
+        tbl="work._tmp_grp",
+        cube_variables=["bp_status", "chol_status"],
+        custom_labels=None,
+    )
+    sas.submitLST(
+        f"""
+    proc sql;
+    create table work._tmp_cube as
+        {qry};
+    quit;
+
+    proc print data=work._tmp_cube (obs=5);
+    run;
+    """,
+        method="listandlog",
+    )
