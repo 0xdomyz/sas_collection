@@ -10,6 +10,11 @@ _lib, _tbl = "sashelp.heart".split(".")
 df_h1 = sas.sasdata(_tbl, _lib).head(1)
 print(df_h1.T.to_string())
 
+# %% [markdown]
+# ## non func example
+# ####################################################################################################
+
+
 # %%
 # col = "bp_status"
 col = None
@@ -41,7 +46,7 @@ df = sas.sd2df(_tbl, _lib)
 df
 
 # %% [markdown]
-# ##
+# ## func example
 # ####################################################################################################
 
 
@@ -69,28 +74,16 @@ def make_freq_tbl_qry(
 sas.submitLST(
     f"""
 {make_freq_tbl_qry(tbl, None)}
-proc sql;
-    create table _tmp_cube_0 as
-    {make_cube_qry("work._tmp_qry",cube_variables=["smoking_status", "chol_status", 'bp_status'],)};
-quit;
+{make_cube_qry("work._tmp_qry",cube_variables=["smoking_status", "chol_status", 'bp_status'],make_tbl=True, out_tbl="work._tmp_cube_0",)}
 
 {make_freq_tbl_qry(tbl, 'bp_status')}
-proc sql;
-    create table _tmp_cube_1 as
-    {make_cube_qry("work._tmp_qry",cube_variables=["smoking_status", "chol_status"],)};
-quit;
+{make_cube_qry("work._tmp_qry",cube_variables=["smoking_status", "chol_status"],make_tbl=True, out_tbl="work._tmp_cube_1",)}
 
 {make_freq_tbl_qry(tbl, 'chol_status')}
-proc sql;
-    create table _tmp_cube_2 as
-    {make_cube_qry("work._tmp_qry",cube_variables=["smoking_status", "bp_status"],)};
-quit;
+{make_cube_qry("work._tmp_qry",cube_variables=["smoking_status", "bp_status"],make_tbl=True, out_tbl="work._tmp_cube_2" ,)}
 
 {make_freq_tbl_qry(tbl, 'smoking_status')}
-proc sql;
-    create table _tmp_cube_3 as
-    {make_cube_qry("work._tmp_qry",cube_variables=["bp_status", "chol_status"],)};
-quit;
+{make_cube_qry("work._tmp_qry",cube_variables=["bp_status", "chol_status"],make_tbl=True, out_tbl="work._tmp_cube_3" ,)}
 
 data work._tmp_cube_99;
     length smoking_status $50 
