@@ -26,6 +26,8 @@ def make_cube_qry(
     tbl: str,
     cube_variables: list = None,
     custom_labels: dict = None,
+    make_tbl: bool = False,
+    out_tbl: str = "_tmp_cube",
 ):
 
     if custom_labels:
@@ -35,11 +37,16 @@ def make_cube_qry(
 
     cube_dim_cols = [f"'{v}' as {k}" for k, v in custom_labels.items()]
 
+    tbl_pre = f"proc sql;\n    create table {out_tbl} as" if make_tbl else ""
+    tbl_post = f";\n    quit;" if make_tbl else ""
+
     qry = f"""
+    {tbl_pre}
     select
         {", ".join(cube_dim_cols)},
         p.*
     from {tbl} p
+    {tbl_post}
 """
     return qry
 
@@ -84,16 +91,15 @@ if __name__ == "__main__":
     sas.submitLST(qry, method="listonly")
 
     # %%
-    qry = make_cube_qry(
-        tbl="work._tmp_grp",
-        cube_variables=["bp_status", "chol_status"],
-        custom_labels=None,
-    )
     sas.submitLST(
         f"""
     proc sql;
     create table work._tmp_cube as
-        {qry};
+        {make_cube_qry(
+            tbl="work._tmp_grp",
+            cube_variables=["bp_status", "chol_status"],
+            custom_labels=None,
+        )};
     quit;
 
     proc print data=work._tmp_cube (obs=5);
@@ -102,18 +108,33 @@ if __name__ == "__main__":
         method="listandlog",
     )
     # %%
-    qry = make_cube_qry(
-        tbl="work._tmp_grp",
-        custom_labels={"bp_status": "High", "chol_status": "Low"},
-    )
     sas.submitLST(
         f"""
     proc sql;
     create table work._tmp_cube as
-        {qry};
+        {make_cube_qry(
+            tbl="work._tmp_grp",
+            custom_labels={"bp_status": "High", "chol_status": "Low"},
+        )};
     quit;
 
     proc print data=work._tmp_cube (obs=5);
+    run;
+    """,
+        method="listandlog",
+    )
+
+    # %%
+    sas.submitLST(
+        f"""
+    {make_cube_qry(
+        tbl="work._tmp_grp",
+        custom_labels={"bp_status": "High", "chol_status": "Low"},
+        make_tbl=True,
+        out_tbl="work._tmp_cube2",
+    )}
+
+    proc print data=work._tmp_cube2 (obs=5);
     run;
     """,
         method="listandlog",
