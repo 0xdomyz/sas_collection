@@ -93,8 +93,7 @@ proc sql;
         '{psi_cat_var}' as psi_variable,
         sum(p.psi_component) as psi
     from _psi_detail p
-    {mkgbob([seg_col,f"p.{time_col}", "psi_variable"])}
-    order by {", ".join([v for v in [seg_col, f"p.{time_col}", "psi_variable"] if v])}
+    {mkgbob([seg_col,f"p.{time_col}", "psi_variable"], order_by=True)}
     ;
 quit;
 """
