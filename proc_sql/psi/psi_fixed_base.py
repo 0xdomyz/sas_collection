@@ -6,7 +6,7 @@ sas
 # %%
 sas.submitLST(
     f"""
-proc rank data=sashelp.heart groups=10 out=heart_time;
+proc rank data=sashelp.heart groups=20 out=heart_time;
     var ageatstart;
     ranks age_decile;
 run;
@@ -20,6 +20,10 @@ df_h = sas.sasdata(_tbl, _lib).head()
 df_h
 
 
+# %% [markdown]
+# ## func
+# ####################################################################################################
+
 # %%
 psi_in_table = "heart_time"
 psi_time_var = "age_decile"
@@ -29,8 +33,7 @@ psi_base_cls = f"{psi_time_var} between 0 and 9"
 psi_eps = 1e-6
 
 # %%
-sas.submitLST(
-    f"""
+qry = f"""
 proc sql;
     create table base_dist as
     select
@@ -50,19 +53,40 @@ proc sql;
     from {psi_in_table} h1
     group by {psi_time_var}, {psi_cat_var};
 
+    create table time_levels as
+    select distinct {psi_time_var}
+    from {psi_in_table};
+
+    create table cat_levels as
+    select {psi_cat_var}
+    from base_dist
+    union
+    select distinct {psi_cat_var}
+    from period_dist;
+
+    create table period_grid as
+    select
+        t.{psi_time_var},
+        c.{psi_cat_var}
+    from time_levels t
+    cross join cat_levels c;
+
     create table psi_detail as
     select
-        p.{psi_time_var},
-        coalesce(p.{psi_cat_var}, b.{psi_cat_var}) as {psi_cat_var} length=16,
+        g.{psi_time_var},
+        g.{psi_cat_var},
         coalesce(b.p_base, 0) as p_base,
         coalesce(p.p_t, 0) as p_t,
         (
             (max(calculated p_t, {psi_eps}) - max(calculated p_base, {psi_eps}))
             * log(max(calculated p_t, {psi_eps}) / max(calculated p_base, {psi_eps}))
         ) as psi_component
-    from period_dist p
-    full join base_dist b
-        on p.{psi_cat_var} = b.{psi_cat_var};
+    from period_grid g
+    left join period_dist p
+        on g.{psi_time_var} = p.{psi_time_var}
+        and g.{psi_cat_var} = p.{psi_cat_var}
+    left join base_dist b
+        on g.{psi_cat_var} = b.{psi_cat_var};
 
     create table {psi_out_table} as
     select
@@ -72,9 +96,37 @@ proc sql;
     group by {psi_time_var}
     order by {psi_time_var};
 quit;
-    """,
-    method="listonly",
-)
+    """
+print(qry)
+sas.submitLST(qry,method="listonly",)
+
+# %% [markdown]
+# ## testing
+# ####################################################################################################
+
+# %%
+base_dist = sas.sd2df("base_dist", "work")
+base_dist
+
+# %%
+period_dist = sas.sd2df("period_dist", "work")
+period_dist
+
+# %%
+time_levels = sas.sd2df("time_levels", "work")
+time_levels
+
+# %%
+cat_levels = sas.sd2df("cat_levels", "work")
+cat_levels
+
+# %%
+period_grid = sas.sd2df("period_grid", "work")
+period_grid
+
+# %%
+psi_detail = sas.sd2df("psi_detail", "work")
+psi_detail
 
 # %%
 _lib, _tbl = f"work.{psi_out_table}".split(".")
