@@ -6,13 +6,17 @@ def mkcol(col: str, alias: str = "", comma: bool = False):
     return f"{col}, " if comma else col
 
 
-def mkgbob(cols: list, prefix: str = "group by"):
+def mkgbob(cols: list, prefix: str = "group by",order_by: bool = False):
     if not cols:
         return ""
     if not isinstance(cols, list):
         cols = [cols]
     cols = [col for col in cols if col]
-    return f"{prefix} {', '.join(cols)}" if cols else ""
+
+    if not cols:
+        return ""
+    gb = f"{prefix} {', '.join(cols)}"
+    return f"{gb} order by {', '.join(cols)}" if order_by else gb
 
 
 def mkjoin(col: str, alias1: str, alias2: str):
@@ -139,3 +143,6 @@ if __name__ == "__main__":
     """,
         method="listandlog",
     )
+
+    # %%
+    assert sas.saslog().count('ERROR') == 0

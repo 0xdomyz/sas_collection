@@ -1,4 +1,8 @@
 # %%
+import sys
+from pathlib import Path
+
+sys.path.append((Path().cwd().parents[0] / 'cube').as_posix())
 import cube_utils as cu
 from cube_utils import make_cube_qry, mkcol, mkgbob, mkjoin
 
