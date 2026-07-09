@@ -27,8 +27,8 @@ run;
     return qry
 
 # %%
-# pred_vars = ["ageatstart",'smoking_status','bp_status',]
-pred_vars = ["ageatstart",]
+pred_vars = ["ageatstart",'smoking_status','bp_status',]
+# pred_vars = ["ageatstart",]
 in_table = "sashelp.heart"
 target_var = "status"
 out_table = "work.res_0"
